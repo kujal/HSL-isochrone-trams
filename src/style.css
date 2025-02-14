@@ -1,0 +1,16 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    text-align: center;
+}
+
+
+#map {
+    width: 90vw;
+    height: 80vh;
+    margin: auto;
+    margin-top: 5vh;
+    border: 2px solid #333;
+    border-radius: 10px;
+}
