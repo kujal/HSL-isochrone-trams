@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var map = L.map("map", {
         center: [60.1699, 24.9384],
         zoom: 12,
-        minZoom: 10, // Set minimum zoom level
+        minZoom: 5, // Set minimum zoom level
         maxZoom: 15, // Set maximum zoom level
         maxBounds: [[60.045, 24.7], [60.297, 25.2]],
         maxBoundsViscosity: 1.0
@@ -22,6 +22,11 @@ document.addEventListener("DOMContentLoaded", function () {
         popupAnchor: [0, -5] // point from which the popup should open relative to the iconAnchor
     });
 
+    // Function to apply a slight offset to coordinates
+    function applyOffset(coordinates, offset) {
+        return coordinates.map(coord => [coord[0] + offset, coord[1] + offset]);
+    }
+
     // Fetch stops data
     fetch('../data/hsl-trams.geojson')
         .then(response => response.json())
@@ -31,13 +36,14 @@ document.addEventListener("DOMContentLoaded", function () {
                 .then(response => response.json())
                 .then(lineData => {
                     // Add polylines to the map
-                    lineData.features.forEach(feature => {
+                    lineData.features.forEach((feature, index) => {
                         if (feature.geometry && feature.geometry.coordinates) {
                             const line = feature.properties.NUMERO;
+                            const offset = index * 0.00002; // Apply a small offset based on the index
 
                             // Handle LineString geometry
                             if (feature.geometry.type === "LineString") {
-                                const coordinates = feature.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                                const coordinates = applyOffset(feature.geometry.coordinates.map(coord => [coord[1], coord[0]]), offset);
                                 L.polyline(coordinates, {
                                     color: getColorForLine(line), // Function to get a distinct color for each line
                                     weight: 4,
@@ -47,7 +53,7 @@ document.addEventListener("DOMContentLoaded", function () {
                             // Handle MultiLineString geometry
                             else if (feature.geometry.type === "MultiLineString") {
                                 feature.geometry.coordinates.forEach(lineSegment => {
-                                    const coordinates = lineSegment.map(coord => [coord[1], coord[0]]);
+                                    const coordinates = applyOffset(lineSegment.map(coord => [coord[1], coord[0]]), offset);
                                     L.polyline(coordinates, {
                                         color: getColorForLine(line), // Function to get a distinct color for each line
                                         weight: 4,
