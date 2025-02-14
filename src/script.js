@@ -22,16 +22,81 @@ document.addEventListener("DOMContentLoaded", function () {
         popupAnchor: [0, -5] // point from which the popup should open relative to the iconAnchor
     });
 
-    // Fetch GeoJSON data and add markers to the map
+    // Fetch stops data
     fetch('../data/hsl-trams.geojson')
         .then(response => response.json())
-        .then(data => {
-            data.features.forEach(feature => {
-                var coordinates = feature.geometry.coordinates;
-                var properties = feature.properties;
-                L.marker([coordinates[1], coordinates[0]], { icon: redDotIcon }).addTo(map)
-                    .bindPopup(`<b>${properties.name}</b><br>Lines: ${properties.lines.join(", ")}`);
-            });
+        .then(stopsData => {
+            // Fetch processed tram line data
+            fetch('../data/tramlines-MultiLineString.geojson')
+                .then(response => response.json())
+                .then(lineData => {
+                    // Add polylines to the map
+                    lineData.features.forEach(feature => {
+                        if (feature.geometry && feature.geometry.coordinates) {
+                            const line = feature.properties.NUMERO;
+
+                            // Handle LineString geometry
+                            if (feature.geometry.type === "LineString") {
+                                const coordinates = feature.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                                L.polyline(coordinates, {
+                                    color: getColorForLine(line), // Function to get a distinct color for each line
+                                    weight: 4,
+                                    opacity: 0.7
+                                }).addTo(map).bindPopup(`Tram Line: ${line}`);
+                            }
+                            // Handle MultiLineString geometry
+                            else if (feature.geometry.type === "MultiLineString") {
+                                feature.geometry.coordinates.forEach(lineSegment => {
+                                    const coordinates = lineSegment.map(coord => [coord[1], coord[0]]);
+                                    L.polyline(coordinates, {
+                                        color: getColorForLine(line), // Function to get a distinct color for each line
+                                        weight: 4,
+                                        opacity: 0.7
+                                    }).addTo(map).bindPopup(`Tram Line: ${line}`);
+                                });
+                            } else {
+                                console.error('Unsupported geometry type:', feature.geometry.type);
+                            }
+                        } else {
+                            console.error('Invalid feature geometry:', feature);
+                        }
+                    });
+
+                    // Add markers for each stop
+                    stopsData.features.forEach(feature => {
+                        const stopCoordinates = feature.geometry.coordinates;
+                        const stopName = feature.properties.name;
+                        const lines = feature.properties.lines;
+
+                        lines.forEach(line => {
+                            L.marker([stopCoordinates[1], stopCoordinates[0]], { icon: redDotIcon }).addTo(map)
+                                .bindPopup(`<b>${stopName}</b><br>Tram Line: ${line}`);
+                        });
+                    });
+                })
+                .catch(error => console.error('Error loading processed GeoJSON data:', error));
         })
-        .catch(error => console.error('Error loading GeoJSON data:', error));
+        .catch(error => console.error('Error loading stops GeoJSON data:', error));
 });
+
+// Function to get a distinct color for each tram line
+function getColorForLine(line) {
+    var colors = {
+        "1": "red",
+        "2": "blue",
+        "3": "green",
+        "4": "purple",
+        "5": "orange",
+        "6": "yellow",
+        "7": "pink",
+        "8": "brown",
+        "9": "black",
+        "10": "cyan",
+        "11": "magenta",
+        "12": "lime",
+        "13": "maroon",
+        "14": "navy",
+        "15": "olive"
+    };
+    return colors[line] || 'gray';
+}
