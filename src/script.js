@@ -18,14 +18,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Define custom icons
     var greenDotIcon = L.icon({
-        iconUrl: '../assets/green-dot.png', // Relative path to your green dot image
+        iconUrl: 'assets/green-dot.png', // Relative path to your green dot image
         iconSize: [10, 10], // size of the icon
         iconAnchor: [5, 5], // point of the icon which will correspond to marker's location
         popupAnchor: [0, -5] // point from which the popup should open relative to the iconAnchor
     });
 
     var blueDotIcon = L.icon({
-        iconUrl: '../assets/blue-dot.png', // Relative path to your blue dot image
+        iconUrl: 'assets/blue-dot.png', // Relative path to your blue dot image
         iconSize: [10, 10], // size of the icon
         iconAnchor: [5, 5], // point of the icon which will correspond to marker's location
         popupAnchor: [0, -5] // point from which the popup should open relative to the iconAnchor
@@ -42,7 +42,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const polylineMap = {};
 
     // Fetch stops data
-    fetch('../data/tramstops.geojson')
+    fetch('data/tramstops.geojson')
         .then(response => response.json())
         .then(stopsData => {
             const stops = {};
@@ -101,7 +101,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             // Fetch processed tram line data
-            fetch('../data/tramlines-MultiLineString.geojson')
+            fetch('data/tramlines-MultiLineString.geojson')
                 .then(response => response.json())
                 .then(lineData => {
                     // Add polylines to the map
