@@ -31,15 +31,22 @@ document.addEventListener("DOMContentLoaded", function () {
         popupAnchor: [0, -5] // point from which the popup should open relative to the iconAnchor
     });
 
+    var redDotIcon = L.icon({
+        iconUrl: 'assets/red-dot.png', // Relative path to your red dot image
+        iconSize: [10, 10], // size of the icon
+        iconAnchor: [5, 5], // point of the icon which will correspond to marker's location
+        popupAnchor: [0, -5] // point from which the popup should open relative to the iconAnchor
+    });
+
     // Function to apply a slight offset to coordinates
     function applyOffset(coordinates, offset) {
         return coordinates.map(coord => [coord[0] + offset, coord[1] + offset]);
     }
 
-    let selectedPolyline = null;
     const polylines = [];
     const markers = {};
     const polylineMap = {};
+    let startStop = 'H0446'; // Default start stop ID
 
     // Fetch stops data
     fetch('data/tramstops.geojson')
@@ -53,7 +60,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 const stopId = feature.properties.LYHYTTUNNU;
                 const stopName = feature.properties.NIMI;
                 const coordinates = feature.geometry.coordinates;
-                const travelTime = feature.properties.travel_time;
+                const travelTime = feature.properties.TRAVELTIME;
+
+                console.log(`Processing stop: ${stopName}, Travel Time: ${travelTime}`);
 
                 // Create a unique identifier for each stop
                 if (!stops[stopId]) {
@@ -67,7 +76,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
 
                 // Add connections (edges) between stops
-                const line = feature.properties.REITTI;
+                const line = feature.properties.REITTI - 1000;
                 if (!connections[line]) {
                     connections[line] = [];
                 }
@@ -84,105 +93,147 @@ document.addEventListener("DOMContentLoaded", function () {
                     stops[stop1].travelTimes[stop2] = travelTime;
                     stops[stop2].connections.push(stop1);
                     stops[stop2].travelTimes[stop1] = travelTime;
+
+                    console.log(`Connection added: ${stop1} to ${stop2}, Travel Time: ${travelTime}`);
                 }
             });
 
-            // Example: Find the shortest path between two stops
-            const startStop = 'H0446'; // Replace with actual start stop ID
-            const endStop = 'H0301'; // Replace with actual end stop ID
-            const result = bfsShortestPath(stops, startStop, endStop);
+            // Add markers for each stop
+            stopsData.features.forEach(feature => {
+                const stopId = feature.properties.LYHYTTUNNU;
+                const stopCoordinates = feature.geometry.coordinates;
+                const stopName = feature.properties.NIMI;
+                const lines = feature.properties.REITTI - 1000;
 
-            if (result) {
-                const { path, totalTime } = result;
-                console.log('Shortest path:', path);
-                console.log('Estimated travel time:', totalTime, 'minutes');
-            } else {
-                console.log('No path found');
-            }
+                const marker = L.marker([stopCoordinates[1], stopCoordinates[0]], { icon: greenDotIcon }).addTo(map)
+                    .bindPopup(`<b>${stopName}</b><br>Tram Line: ${lines}`);
+                
+                marker.on('click', function () {
+                    startStop = stopId;
+                    console.log(`Start stop set to: ${stopId}`);
+                    updateReachableStops();
+                });
 
-            // Fetch processed tram line data
-            fetch('data/tramlines-MultiLineString.geojson')
-                .then(response => response.json())
-                .then(lineData => {
-                    // Add polylines to the map
-                    lineData.features.forEach((feature, index) => {
-                        if (feature.geometry && feature.geometry.coordinates) {
-                            const line = feature.properties.NUMERO;
-                            const offset = 0; // Apply a small offset based on the index
+                markers[stopId] = marker;
+            });
 
-                            // Handle MultiLineString geometry
-                            if (feature.geometry.type === "MultiLineString") {
-                                const allCoordinates = feature.geometry.coordinates.map(lineSegment => 
-                                    applyOffset(lineSegment.map(coord => [coord[1], coord[0]]), offset)
-                                );
+            // Function to find reachable stops within the given travel time
+            function findReachableStops(startStop, maxTravelTime, transferTime) {
+                const queue = [[startStop, 0]];
+                const visited = new Set();
+                const reachableStops = new Set();
 
-                                // Create inside polyline
-                                const polyline = L.polyline(allCoordinates, {
-                                    color: '#91c9b4', // Initial color
-                                    weight: 4,
-                                    opacity: 0.7
-                                }).addTo(map).bindPopup(`Tram Line: ${line}`);
-                                polylines.push(polyline);
+                while (queue.length > 0) {
+                    const [currentStop, currentTime] = queue.shift();
 
-                                // Store polyline in polylineMap
-                                polylineMap[line] = polyline;
+                    if (currentTime <= maxTravelTime) {
+                        reachableStops.add(currentStop);
+                        visited.add(currentStop);
 
-                                // Change color to blue on click
-                                polyline.on('click', function () {
-                                    polylines.forEach(p => p.setStyle({ color: '#91c9b4', weight: 2, opacity: 0.7 }));
-                                    polyline.setStyle({ color: '#007ac9', weight: 5, opacity: 1.0 });
-                                    selectedPolyline = polyline;
-                                });
-                            } else {
-                                console.error('Unsupported geometry type:', feature.geometry.type);
-                            }
-                        } else {
-                            console.error('Invalid feature geometry:', feature);
-                        }
-                    });
-
-                    // Add markers for each stop
-                    stopsData.features.forEach(feature => {
-                        const stopId = feature.properties.LYHYTTUNNU;
-                        const stopCoordinates = feature.geometry.coordinates;
-                        const stopName = feature.properties.NIMI;
-                        const lines = feature.properties.REITTI;
-
-                        const marker = L.marker([stopCoordinates[1], stopCoordinates[0]], { icon: greenDotIcon }).addTo(map)
-                            .bindPopup(`<b>${stopName}</b><br>Tram Line: ${lines}`);
-                        
-                        markers[stopId] = marker;
-                    });
-
-                    // Highlight the stops in the shortest path
-                    if (result && result.path) {
-                        result.path.forEach(stopId => {
-                            if (markers[stopId]) {
-                                markers[stopId].setIcon(blueDotIcon);
+                        stops[currentStop].connections.forEach(neighbor => {
+                            if (!visited.has(neighbor)) {
+                                const travelTime = stops[currentStop].travelTimes[neighbor];
+                                const newTime = currentTime + travelTime + transferTime;
+                                queue.push([neighbor, newTime]);
+                                console.log(`Queueing neighbor: ${neighbor}, New Time: ${newTime}`);
                             }
                         });
-
-                        // Highlight the polylines in the shortest path
-                        for (let i = 0; i < result.path.length - 1; i++) {
-                            const stop1 = result.path[i];
-                            const stop2 = result.path[i + 1];
-                            Object.values(polylineMap).forEach(polyline => {
-                                const latlngs = polyline.getLatLngs();
-                                for (let j = 0; j < latlngs.length - 1; j++) {
-                                    if ((latlngs[j].lat === stops[stop1].coordinates[1] && latlngs[j].lng === stops[stop1].coordinates[0] &&
-                                         latlngs[j + 1].lat === stops[stop2].coordinates[1] && latlngs[j + 1].lng === stops[stop2].coordinates[0]) ||
-                                        (latlngs[j].lat === stops[stop2].coordinates[1] && latlngs[j].lng === stops[stop2].coordinates[0] &&
-                                         latlngs[j + 1].lat === stops[stop1].coordinates[1] && latlngs[j + 1].lng === stops[stop1].coordinates[0])) {
-                                        polyline.setStyle({ color: 'blue', opacity: 1.0 });
-                                    }
-                                }
-                            });
-                        }
                     }
-                })
-                .catch(error => console.error('Error loading processed GeoJSON data:', error));
+                }
+
+                console.log(`Reachable stops from ${startStop} within ${maxTravelTime} minutes:`, reachableStops);
+                return reachableStops;
+            }
+
+            // Update reachable stops based on slider values
+            function updateReachableStops() {
+                const maxTravelTime = parseInt(document.getElementById('travel-time-slider').value, 10);
+                const transferTime = parseInt(document.getElementById('transfer-time-slider').value, 10);
+
+                console.log(`Updating reachable stops with max travel time: ${maxTravelTime} and transfer time: ${transferTime}`);
+
+                const reachableStops = findReachableStops(startStop, maxTravelTime, transferTime);
+
+                // Reset all markers to green
+                Object.values(markers).forEach(marker => {
+                    marker.setIcon(greenDotIcon);
+                });
+
+                // Set reachable stops to blue
+                reachableStops.forEach(stopId => {
+                    if (markers[stopId]) {
+                        markers[stopId].setIcon(blueDotIcon);
+                    }
+                });
+
+                // Set the start stop to red
+                if (markers[startStop]) {
+                    markers[startStop].setIcon(redDotIcon);
+                }
+            }
+
+            // Initialize travel time slider
+            var travelTimeSlider = document.getElementById('travel-time-slider');
+            var travelTimeValue = document.getElementById('travel-time-value');
+            travelTimeSlider.addEventListener('input', function () {
+                travelTimeValue.innerText = travelTimeSlider.value;
+                updateReachableStops();
+            });
+
+            // Initialize transfer time slider
+            var transferTimeSlider = document.getElementById('transfer-time-slider');
+            var transferTimeValue = document.getElementById('transfer-time-value');
+            transferTimeSlider.addEventListener('input', function () {
+                transferTimeValue.innerText = transferTimeSlider.value;
+                updateReachableStops();
+            });
+
+            // Initial update of reachable stops
+            updateReachableStops();
         })
         .catch(error => console.error('Error loading stops GeoJSON data:', error));
+
+    // Fetch tram lines data
+    fetch('data/tramlines-MultiLineString.geojson')
+        .then(response => response.json())
+        .then(lineData => {
+            // Add polylines to the map
+            lineData.features.forEach((feature, index) => {
+                if (feature.geometry && feature.geometry.coordinates) {
+                    const line = feature.properties.NUMERO;
+                    const offset = 0; // Apply a small offset based on the index
+
+                    // Handle MultiLineString geometry
+                    if (feature.geometry.type === "MultiLineString") {
+                        const allCoordinates = feature.geometry.coordinates.map(lineSegment => 
+                            applyOffset(lineSegment.map(coord => [coord[1], coord[0]]), offset)
+                        );
+
+                        // Create inside polyline
+                        const polyline = L.polyline(allCoordinates, {
+                            color: '#91c9b4', // Initial color
+                            weight: 4,
+                            opacity: 0.7
+                        }).addTo(map).bindPopup(`Tram Line: ${line}`);
+                        polylines.push(polyline);
+
+                        // Store polyline in polylineMap
+                        polylineMap[line] = polyline;
+
+                        // Change color to blue on click
+                        polyline.on('click', function () {
+                            polylines.forEach(p => p.setStyle({ color: '#91c9b4', weight: 2, opacity: 0.7 }));
+                            polyline.setStyle({ color: '#007ac9', weight: 5, opacity: 1.0 });
+                        });
+                    } else {
+                        console.error('Unsupported geometry type:', feature.geometry.type);
+                    }
+                } else {
+                    console.error('Invalid feature geometry:', feature);
+                }
+            });
+        })
+        .catch(error => console.error('Error loading tram lines GeoJSON data:', error));
 
     // Add custom control for sliders
     var customControl = L.Control.extend({
@@ -194,12 +245,12 @@ document.addEventListener("DOMContentLoaded", function () {
             container.innerHTML = `
                 <div id="controls">
                     <div>
-                        <label for="travel-time-slider">Travel Time (minutes): <span id="travel-time-value">3</span></label>
-                        <input type="range" id="travel-time-slider" min="3" max="85" step="1" value="3">
+                        <label for="travel-time-slider">Travel Time (minutes): <span id="travel-time-value">10</span></label>
+                        <input type="range" id="travel-time-slider" min="3" max="85" step="1" value="10">
                     </div>
                     <div>
-                        <label for="transfer-time-slider">Time Lost in Transfer (minutes): <span id="transfer-time-value">0</span></label>
-                        <input type="range" id="transfer-time-slider" min="0" max="15" step="1" value="0">
+                        <label for="transfer-time-slider">Time Lost in Transfer (minutes): <span id="transfer-time-value">3</span></label>
+                        <input type="range" id="transfer-time-slider" min="0" max="15" step="1" value="3">
                     </div>
                 </div>
             `;
@@ -223,35 +274,3 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     map.addControl(new customControl());
 });
-
-// BFS function to find the shortest path
-function bfsShortestPath(graph, start, end) {
-    const queue = [[start]];
-    const visited = new Set();
-    const travelTimes = { [start]: 0 };
-
-    while (queue.length > 0) {
-        const path = queue.shift();
-        const node = path[path.length - 1];
-
-        if (node === end) {
-            return { path, totalTime: travelTimes[node] };
-        }
-
-        if (!visited.has(node)) {
-            visited.add(node);
-            const neighbors = graph[node].connections;
-
-            neighbors.forEach(neighbor => {
-                if (!visited.has(neighbor)) {
-                    const newPath = path.slice();
-                    newPath.push(neighbor);
-                    queue.push(newPath);
-                    travelTimes[neighbor] = travelTimes[node] + graph[node].travelTimes[neighbor];
-                }
-            });
-        }
-    }
-
-    return null; // No path found
-}
