@@ -61,6 +61,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 const stopName = feature.properties.NIMI;
                 const coordinates = feature.geometry.coordinates;
                 const travelTime = feature.properties.TRAVELTIME;
+                const line = feature.properties.REITTI;
 
                 console.log(`Processing stop: ${stopName}, Travel Time: ${travelTime}`);
 
@@ -71,12 +72,12 @@ document.addEventListener("DOMContentLoaded", function () {
                         name: stopName,
                         coordinates: coordinates,
                         connections: [],
-                        travelTimes: {}
+                        travelTimes: {},
+                        line: line // Add line property
                     };
                 }
 
                 // Add connections (edges) between stops
-                const line = feature.properties.REITTI - 1000;
                 if (!connections[line]) {
                     connections[line] = [];
                 }
@@ -103,7 +104,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 const stopId = feature.properties.LYHYTTUNNU;
                 const stopCoordinates = feature.geometry.coordinates;
                 const stopName = feature.properties.NIMI;
-                const lines = feature.properties.REITTI - 1000;
+                const lines = feature.properties.REITTI;
 
                 const marker = L.marker([stopCoordinates[1], stopCoordinates[0]], { icon: greenDotIcon }).addTo(map)
                     .bindPopup(`<b>${stopName}</b><br>Tram Line: ${lines}`);
@@ -119,12 +120,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
             // Function to find reachable stops within the given travel time
             function findReachableStops(startStop, maxTravelTime, transferTime) {
-                const queue = [[startStop, 0]];
+                const queue = [[startStop, 0, stops[startStop].line]]; // Add current line to the queue
                 const visited = new Set();
                 const reachableStops = new Set();
 
                 while (queue.length > 0) {
-                    const [currentStop, currentTime] = queue.shift();
+                    const [currentStop, currentTime, currentLine] = queue.shift();
 
                     if (currentTime <= maxTravelTime) {
                         reachableStops.add(currentStop);
@@ -133,9 +134,10 @@ document.addEventListener("DOMContentLoaded", function () {
                         stops[currentStop].connections.forEach(neighbor => {
                             if (!visited.has(neighbor)) {
                                 const travelTime = stops[currentStop].travelTimes[neighbor];
-                                const newTime = currentTime + travelTime + transferTime;
-                                queue.push([neighbor, newTime]);
-                                console.log(`Queueing neighbor: ${neighbor}, New Time: ${newTime}`);
+                                const neighborLine = stops[neighbor].line; // Get the line of the neighbor
+                                const newTime = currentTime + travelTime + (currentLine !== null && currentLine !== neighborLine ? transferTime : 0);
+                                queue.push([neighbor, newTime, neighborLine]);
+                                console.log(`Queueing neighbor: ${neighbor}, New Time: ${newTime}, Current Line: ${currentLine}, Neighbor Line: ${neighborLine}`);
                             }
                         });
                     }
