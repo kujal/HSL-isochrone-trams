@@ -184,19 +184,44 @@ document.addEventListener("DOMContentLoaded", function () {
         })
         .catch(error => console.error('Error loading stops GeoJSON data:', error));
 
-    // Initialize travel time slider
-    var travelTimeSlider = document.getElementById('travel-time-slider');
-    var travelTimeValue = document.getElementById('travel-time-value');
-    travelTimeSlider.addEventListener('input', function () {
-        travelTimeValue.innerText = travelTimeSlider.value;
-    });
+    // Add custom control for sliders
+    var customControl = L.Control.extend({
+        options: {
+            position: 'topright' // Position of the control
+        },
+        onAdd: function (map) {
+            var container = L.DomUtil.create('div', 'leaflet-control-custom');
+            container.innerHTML = `
+                <div id="controls">
+                    <div>
+                        <label for="travel-time-slider">Travel Time (minutes): <span id="travel-time-value">3</span></label>
+                        <input type="range" id="travel-time-slider" min="3" max="85" step="1" value="3">
+                    </div>
+                    <div>
+                        <label for="transfer-time-slider">Time Lost in Transfer (minutes): <span id="transfer-time-value">0</span></label>
+                        <input type="range" id="transfer-time-slider" min="0" max="15" step="1" value="0">
+                    </div>
+                </div>
+            `;
 
-    // Initialize transfer time slider
-    var transferTimeSlider = document.getElementById('transfer-time-slider');
-    var transferTimeValue = document.getElementById('transfer-time-value');
-    transferTimeSlider.addEventListener('input', function () {
-        transferTimeValue.innerText = transferTimeSlider.value;
+            // Initialize travel time slider
+            var travelTimeSlider = container.querySelector('#travel-time-slider');
+            var travelTimeValue = container.querySelector('#travel-time-value');
+            travelTimeSlider.addEventListener('input', function () {
+                travelTimeValue.innerText = travelTimeSlider.value;
+            });
+
+            // Initialize transfer time slider
+            var transferTimeSlider = container.querySelector('#transfer-time-slider');
+            var transferTimeValue = container.querySelector('#transfer-time-value');
+            transferTimeSlider.addEventListener('input', function () {
+                transferTimeValue.innerText = transferTimeSlider.value;
+            });
+
+            return container;
+        }
     });
+    map.addControl(new customControl());
 });
 
 // BFS function to find the shortest path
